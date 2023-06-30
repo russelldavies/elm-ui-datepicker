@@ -1,6 +1,6 @@
 module DatePicker exposing
     ( input, Model, init, setToday, ChangeEvent(..), update, Settings, defaultSettings, initWithToday
-    , close, open, setVisibleMonth, SelectorLevel(..), setSelectorLevel, Language
+    , close, open, setVisibleMonth, Language
     )
 
 {-|
@@ -15,12 +15,12 @@ module DatePicker exposing
 
 For when you want to be more in control
 
-@docs close, open, setVisibleMonth, SelectorLevel, setSelectorLevel, Language
+@docs close, open, setVisibleMonth, Language
 
 -}
 
 import Date exposing (Date)
-import Element exposing (Attribute, Element, alignLeft, alignRight, centerX, mouseOver, padding, spacing)
+import Element exposing (Attribute, Element, alignLeft, alignRight, centerX, fill, mouseOver, padding, spacing, text, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Events as Events
@@ -47,7 +47,6 @@ type alias Picker =
     { open : Bool
     , today : Date
     , visibleMonth : Date
-    , level : SelectorLevel
     }
 
 
@@ -71,7 +70,6 @@ init =
         { open = False
         , today = Date.fromOrdinalDate 1 1
         , visibleMonth = Date.fromOrdinalDate 1 1
-        , level = DaysLevel
         }
 
 
@@ -83,7 +81,6 @@ initWithToday today =
         { open = False
         , today = today
         , visibleMonth = today
-        , level = DaysLevel
         }
 
 
@@ -169,47 +166,15 @@ setVisibleMonth date (Model picker) =
     Model { picker | visibleMonth = date }
 
 
-{-| Sets the selector level that is visible when date picker is open.
-
-Example: start on the year level:
-
-    init : ( Model, Cmd Msg )
-    init =
-        ( { date = Nothing
-          , dateText = ""
-          , pickerModel =
-                DatePicker.init
-                    |> DatePicker.setSelectorLevel DatePicker.YearsLevel
-          }
-        , Task.perform SetToday Date.today
-        )
-
--}
-setSelectorLevel : SelectorLevel -> Model -> Model
-setSelectorLevel level (Model picker) =
-    Model { picker | level = level }
-
-
 
 --  UPDATE
 
 
 type Msg
     = ChangeMonth Date
-    | ChangeMonthAndLevel Date SelectorLevel
-    | ChangeYearAndLevel Int SelectorLevel
     | Open
     | Close
-    | ChangeLevel SelectorLevel
     | NothingToDo
-
-
-{-| The different selector levels the date picker can show.
--}
-type SelectorLevel
-    = DaysLevel
-    | MonthsLevel
-    | YearsLevel
 
 
 {-| Use in your update function:
@@ -273,24 +238,11 @@ update msg model =
         ChangeMonth month ->
             setVisibleMonth month model
 
-        ChangeMonthAndLevel month view ->
-            model
-                |> setVisibleMonth month
-                |> setSelectorLevel view
-
-        ChangeYearAndLevel year view ->
-            model
-                |> setVisibleMonth (Date.fromOrdinalDate year 1)
-                |> setSelectorLevel view
-
         Open ->
             open model
 
         Close ->
             close model
-
-        ChangeLevel view ->
-            setSelectorLevel view model
 
         NothingToDo ->
             model
@@ -347,8 +299,6 @@ defaultSettings =
         , padding 8
         , spacing 4
         , Element.centerX
-        , Element.centerY
-        , Element.width Element.fill
         , Background.color <| Element.rgb255 255 255 255
         ]
     , headerAttributes =
@@ -475,13 +425,6 @@ input attributes ({ settings, model, label, placeholder, selected, onChange } as
             , onChange = onChange
             }
 
-        pickerEl =
-            if picker.open then
-                pickerView config
-
-            else
-                []
-
         inputAttributes =
             if picker.open then
                 attributes
@@ -489,11 +432,18 @@ input attributes ({ settings, model, label, placeholder, selected, onChange } as
             else
                 attributes
                     ++ [ Events.onClick <| onChange <| PickerChanged Open ]
+
+        pickerEl =
+            if picker.open then
+                pickerView config
+
+            else
+                Element.none
     in
     Input.text
         (inputAttributes
-            ++ pickerEl
-            ++ [ Events.onFocus <| onChange <| PickerChanged Open
+            ++ [ Element.below pickerEl
+               , Events.onFocus <| onChange <| PickerChanged Open
                , Events.onLoseFocus <| onChange <| PickerChanged Close
                , TestHelper.inputAttr
                ]
@@ -505,153 +455,30 @@ input attributes ({ settings, model, label, placeholder, selected, onChange } as
         }
 
 
-pickerView :
-    Config msg
-    -> List (Attribute msg)
+pickerView : Config msg -> Element msg
 pickerView ({ settings } as config) =
-    [ Element.below <|
-        Element.column
-            (TestHelper.calendarAttr
-                :: preventDefaultOnMouseDown config
-                :: extAttrs settings.pickerAttributes
-            )
-            [ pickerHeader config
-            , pickerTable config
-            ]
-    ]
-
-
-pickerTable : Config msg -> Element msg
-pickerTable ({ settings, picker } as config) =
-    case picker.level of
-        DaysLevel ->
-            Element.table (TestHelper.tableAttr :: extAttrs settings.tableAttributes)
-                { data = Week.weeksInMonth picker.visibleMonth config.settings.firstDayOfWeek
-                , columns = pickerColumns config
-                }
-
-        MonthsLevel ->
-            monthTable config
-
-        YearsLevel ->
-            let
-                decade =
-                    Date.year picker.visibleMonth // 10 * 10
-            in
-            Element.column (TestHelper.tableAttr :: extAttrs settings.yearsTableAttributes)
-                (List.range 0 2
-                    |> List.map
-                        (\i ->
-                            Element.row (extAttrs settings.yearsTableAttributes)
-                                (List.range -1 2
-                                    |> List.map
-                                        (\j ->
-                                            4
-                                                * i
-                                                + j
-                                                + decade
-                                                |> selectYearElement config
-                                        )
-                                )
-                        )
-                )
-
-
-monthTable : Config msg -> Element msg
-monthTable ({ settings, picker } as config) =
-    Element.column (TestHelper.tableAttr :: extAttrs settings.monthsTableAttributes)
-        (List.range 0 2
-            |> List.map
-                (\i ->
-                    Element.row (extAttrs settings.monthsTableAttributes)
-                        (List.range 0 3
-                            |> List.map
-                                (\j ->
-                                    Date.fromCalendarDate (Date.year picker.visibleMonth) Jan 1
-                                        |> Date.add Date.Months (4 * i + j)
-                                        |> selectMonthElement config
-                                )
-                        )
-                )
+    Element.column
+        (TestHelper.calendarAttr
+            :: preventDefaultOnMouseDown config
+            :: extAttrs settings.pickerAttributes
         )
+        [ pickerHeader config
+        , Element.row [ spacing 20 ]
+            [ pickerTable config config.picker.visibleMonth
+            , pickerTable config (Date.add Date.Months 1 config.picker.visibleMonth)
+            ]
+        ]
 
 
-selectYearElement : Config msg -> Int -> Element msg
-selectYearElement ({ settings, picker } as config) year =
-    let
-        attributesForThisYear =
-            List.concat
-                [ extAttrs settings.monthYearAttribute
-                , [ Events.onClick <| config.onChange <| PickerChanged <| ChangeYearAndLevel year MonthsLevel
-                  , Element.pointer
-                  , TestHelper.yearAttr
-                  ]
-                , if
-                    Date.year picker.today
-                        == year
-                  then
-                    TestHelper.todayAttr
-                        :: extAttrs settings.todayDayAttributes
-
-                  else
-                    []
-                , if
-                    Maybe.map Date.year config.selected
-                        == Just year
-                  then
-                    TestHelper.selectedAttr
-                        :: extAttrs settings.selectedDayAttributes
-
-                  else
-                    []
-                ]
-    in
-    Element.el attributesForThisYear
-        (Element.text <| String.fromInt year)
-
-
-selectMonthElement : Config msg -> Date -> Element msg
-selectMonthElement ({ settings, picker } as config) month =
-    let
-        attributesForThisMonth =
-            List.concat
-                [ extAttrs settings.monthYearAttribute
-                , [ Events.onClick <| config.onChange <| PickerChanged <| ChangeMonthAndLevel month DaysLevel
-                  , Element.pointer
-                  , TestHelper.monthAttr
-                  ]
-                , if
-                    Date.month picker.today
-                        == Date.month month
-                        && Date.year picker.today
-                        == Date.year month
-                  then
-                    TestHelper.todayAttr
-                        :: extAttrs settings.todayDayAttributes
-
-                  else
-                    []
-                , if
-                    Maybe.map Date.month config.selected
-                        == Just (Date.month month)
-                        && Maybe.map Date.year config.selected
-                        == Just (Date.year month)
-                  then
-                    TestHelper.selectedAttr
-                        :: extAttrs settings.selectedDayAttributes
-
-                  else
-                    []
-
-                -- TODO All Days in Month are disabled => Disable Month?
-                -- , if settings.disabled day then
-                --     extAttrs settings.disabledDayAttributes
-                --   else
-                --     [ Events.onClick <| config.onChange <| DateChanged day, Element.pointer ]
-                ]
-    in
-    Element.el attributesForThisMonth
-        (Element.text <| Date.formatMaybeLanguage settings.language "MMM" month)
+pickerTable : Config msg -> Date -> Element msg
+pickerTable ({ settings } as config) month =
+    Element.column []
+        [ Element.el [ Element.centerX ] <| Element.text <| Date.formatMaybeLanguage settings.language "MMMM yyyy" month
+        , Element.table (TestHelper.tableAttr :: extAttrs settings.tableAttributes)
+            { data = Week.weeksInMonth month config.settings.firstDayOfWeek
+            , columns = pickerColumns config
+            }
+        ]
 
 
 pickerColumns : Config msg -> List (Element.Column (Week Date) msg)
@@ -674,39 +501,6 @@ pickerColumns config =
 
 pickerHeader : Config msg -> Element msg
 pickerHeader { onChange, picker, settings } =
-    let
-        headerProperties =
-            case picker.level of
-                DaysLevel ->
-                    { stepUnit = Date.Months
-                    , stepSize = 1
-                    , title =
-                        Element.text <|
-                            Date.formatMaybeLanguage settings.language "MMMM yyyy" picker.visibleMonth
-                    , nextLevel = Just MonthsLevel
-                    }
-
-                MonthsLevel ->
-                    { stepUnit = Date.Years
-                    , stepSize = 1
-                    , title =
-                        Element.text <|
-                            Date.formatMaybeLanguage settings.language "yyyy" picker.visibleMonth
-                    , nextLevel = Just YearsLevel
-                    }
-
-                YearsLevel ->
-                    { stepUnit = Date.Years
-                    , stepSize = 10
-                    , title =
-                        Element.text <|
-                            (Date.formatMaybeLanguage settings.language "yyyy" picker.visibleMonth
-                                |> String.slice 0 3
-                                |> String.padRight 4 'X'
-                            )
-                    , nextLevel = Nothing
-                    }
-    in
     Element.row (extAttrs settings.headerAttributes)
         [ Input.button
             (alignLeft
@@ -717,15 +511,15 @@ pickerHeader { onChange, picker, settings } =
                 Just <|
                     onChange <|
                         PickerChanged <|
-                            ChangeMonth (Date.add headerProperties.stepUnit (-1 * headerProperties.stepSize) picker.visibleMonth)
+                            ChangeMonth (Date.add Date.Months -1 picker.visibleMonth)
             , label = extEle settings.previousMonthElement
             }
         , Input.button
             (centerX
                 :: extAttrs settings.headerButtonsAttributes
             )
-            { onPress = Maybe.map (\up -> onChange <| PickerChanged <| ChangeLevel up) headerProperties.nextLevel
-            , label = headerProperties.title
+            { onPress = Just <| onChange <| PickerChanged <| ChangeMonth picker.today
+            , label = Element.text "Current month"
             }
         , Input.button
             (alignRight
@@ -736,7 +530,7 @@ pickerHeader { onChange, picker, settings } =
                 Just <|
                     onChange <|
                         PickerChanged <|
-                            ChangeMonth (Date.add headerProperties.stepUnit headerProperties.stepSize picker.visibleMonth)
+                            ChangeMonth (Date.add Date.Months 1 picker.visibleMonth)
             , label = extEle settings.nextMonthElement
             }
         ]
